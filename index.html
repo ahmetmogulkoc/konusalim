@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Konuşalım</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  :root {
+    --bg: #f4f6f5; --card: #ffffff; --ink: #18211f; --muted: #6b7672;
+    --brand: #0f766e; --brand-dark: #0b5a54; --danger: #c2410c; --line: #e2e7e5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink);
+    display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  header { background: var(--brand); color: #fff; padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+  header h1 { font-size: 19px; margin: 0; flex: 1; }
+  header .room { font-size: 13px; opacity: .85; }
+  main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .screen { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  .screen.active { display: flex; }
+
+  /* Giriş ekranı */
+  #joinScreen { justify-content: center; padding: 24px; }
+  .card { background: var(--card); border-radius: 16px; padding: 22px; box-shadow: 0 2px 12px rgba(0,0,0,.06); max-width: 420px; width: 100%; margin: 0 auto; }
+  .card h2 { margin: 0 0 4px; font-size: 22px; }
+  .card p { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
+  input { width: 100%; font-size: 17px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; outline: none; background: #fff; }
+  input:focus { border-color: var(--brand); }
+  button { font: inherit; cursor: pointer; border: none; border-radius: 10px; }
+  .primary { width: 100%; margin-top: 20px; background: var(--brand); color: #fff; font-size: 17px; font-weight: 600; padding: 14px; }
+  .primary:disabled { opacity: .6; }
+  .status { margin-top: 12px; font-size: 14px; color: var(--danger); min-height: 20px; }
+
+  /* Oda ekranı */
+  #people { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px; background: var(--card); border-bottom: 1px solid var(--line); }
+  .person { display: flex; flex-direction: column; align-items: center; width: 64px; }
+  .avatar { width: 52px; height: 52px; border-radius: 50%; background: #d7ece9; color: var(--brand-dark); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; border: 3px solid transparent; transition: border-color .15s; position: relative; }
+  .avatar.speaking { border-color: #22c55e; }
+  .avatar .mut { position: absolute; right: -4px; bottom: -4px; background: var(--danger); color: #fff; border-radius: 50%; width: 20px; height: 20px; font-size: 11px; display: none; align-items: center; justify-content: center; }
+  .avatar.muted .mut { display: flex; }
+  .person span { font-size: 12px; margin-top: 4px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #messages { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .msg { max-width: 80%; padding: 8px 12px; border-radius: 14px; background: var(--card); font-size: 15px; line-height: 1.35; word-wrap: break-word; align-self: flex-start; }
+  .msg.me { background: #cdeee9; align-self: flex-end; }
+  .msg b { display: block; font-size: 12px; color: var(--brand-dark); }
+  .sys { align-self: center; font-size: 12px; color: var(--muted); }
+  #chatBar { display: flex; gap: 8px; padding: 10px; background: var(--card); border-top: 1px solid var(--line); }
+  #chatBar input { flex: 1; }
+  #chatBar button { background: var(--brand); color: #fff; padding: 0 16px; font-weight: 600; }
+  #controls { display: flex; gap: 10px; padding: 10px 14px 14px; background: var(--card); }
+  #controls button { flex: 1; padding: 13px; font-weight: 600; font-size: 15px; }
+  #muteBtn { background: #e6f2f0; color: var(--brand-dark); }
+  #muteBtn.off { background: #fde7dc; color: var(--danger); }
+  #shareBtn { background: #e6f2f0; color: var(--brand-dark); }
+  #leaveBtn { background: var(--danger); color: #fff; }
+  #unlockAudio { display: none; margin: 10px 14px 0; background: #fff4d6; color: #7a5800; padding: 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Konuşalım</h1>
+  <div class="room" id="roomLabel"></div>
+</header>
+
+<main>
+  <section id="joinScreen" class="screen active">
+    <div class="card">
+      <h2>Odaya katıl</h2>
+      <p>Aynı oda kodunu yazan herkes birlikte konuşur. En fazla 6 kişi.</p>
+      <label for="nameInput">Adın</label>
+      <input id="nameInput" maxlength="20" placeholder="Örn. Mahir" autocomplete="off">
+      <label for="roomInput">Oda kodu</label>
+      <input id="roomInput" maxlength="30" placeholder="Örn. bizimoda" autocomplete="off" autocapitalize="off">
+      <button class="primary" id="joinBtn">Katıl</button>
+      <div class="status" id="joinStatus"></div>
+    </div>
+  </section>
+
+  <section id="roomScreen" class="screen">
+    <div id="people"></div>
+    <button id="unlockAudio">Sesleri duymak için dokun</button>
+    <div id="messages"></div>
+    <form id="chatBar">
+      <input id="chatInput" placeholder="Mesaj yaz…" autocomplete="off" maxlength="500">
+      <button type="submit">Gönder</button>
+    </form>
+    <div id="controls">
+      <button id="muteBtn">Mikrofon açık</button>
+      <button id="shareBtn">Davet et</button>
+      <button id="leaveBtn">Ayrıl</button>
+    </div>
+  </section>
+</main>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+// ===================== AYARLAR =====================
+// Sitenin internet adresi (GitHub Pages linkin). Davet linkleri bununla oluşur.
+// Örnek: 'https://kullaniciadin.github.io/konusalim/'
+const WEB_URL = '';
+const MAX_PEOPLE = 6;
+const APP_PREFIX = 'konusalim-v1-';
+// ===================================================
+
+const $ = (id) => document.getElementById(id);
+const state = {
+  peer: null, myId: null, myName: '', room: '', stream: null,
+  remotes: {},          // id -> { id, name, conn, call, audio, muted }
+  audioCtx: null, meters: {}, leaving: false,
+};
+
+// ---------- Yardımcılar ----------
+function cleanRoom(text) {
+  return text.toLowerCase()
+    .replace(/ç/g,'c').replace(/ğ/g,'g').replace(/ı/g,'i').replace(/ö/g,'o').replace(/ş/g,'s').replace(/ü/g,'u')
+    .replace(/[^a-z0-9]/g, '').slice(0, 30);
+}
+function slotId(n) { return APP_PREFIX + state.room + '-' + n; }
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+}
+function setStatus(text) { $('joinStatus').textContent = text || ''; }
+function escapeHtml(t) {
+  return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function addSystem(text) {
+  const d = document.createElement('div'); d.className = 'sys'; d.textContent = text;
+  $('messages').appendChild(d); $('messages').scrollTop = 1e9;
+}
+function addMessage(name, text, mine) {
+  const d = document.createElement('div'); d.className = 'msg' + (mine ? ' me' : '');
+  d.innerHTML = (mine ? '' : '<b>' + escapeHtml(name) + '</b>') + escapeHtml(text);
+  $('messages').appendChild(d); $('messages').scrollTop = 1e9;
+}
+function inviteLink() {
+  return WEB_URL ? WEB_URL.replace(/\/?$/, '/') + '?oda=' + encodeURIComponent(state.room) : '';
+}
+
+// ---------- Kişi listesi ----------
+function renderPeople() {
+  const box = $('people'); box.innerHTML = '';
+  const list = [{ id: state.myId, name: state.myName + ' (sen)', muted: !micOn() }]
+    .concat(Object.values(state.remotes).filter(r => r.name).map(r => ({ id: r.id, name: r.name, muted: r.muted })));
+  list.forEach(p => {
+    const el = document.createElement('div'); el.className = 'person';
+    el.innerHTML = '<div class="avatar' + (p.muted ? ' muted' : '') + '" data-id="' + p.id + '">' +
+      escapeHtml((p.name[0] || '?').toUpperCase()) + '<div class="mut">✕</div></div><span>' + escapeHtml(p.name) + '</span>';
+    box.appendChild(el);
+  });
+  $('roomLabel').textContent = 'Oda: ' + state.room + ' · ' + list.length + '/' + MAX_PEOPLE;
+}
+
+// ---------- Konuşuyor göstergesi ----------
+function watchLevel(id, stream) {
+  try {
+    if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = state.audioCtx.createMediaStreamSource(stream);
+    const an = state.audioCtx.createAnalyser(); an.fftSize = 512;
+    src.connect(an);
+    state.meters[id] = an;
+  } catch (e) { /* gösterge olmasa da konuşma çalışır */ }
+}
+function levelLoop() {
+  const buf = new Uint8Array(256);
+  for (const id in state.meters) {
+    const an = state.meters[id];
+    an.getByteTimeDomainData(buf);
+    let max = 0; for (let i = 0; i < buf.length; i++) max = Math.max(max, Math.abs(buf[i] - 128));
+    const el = document.querySelector('.avatar[data-id="' + id + '"]');
+    if (el) el.classList.toggle('speaking', max > 12);
+  }
+  requestAnimationFrame(levelLoop);
+}
+requestAnimationFrame(levelLoop);
+
+// ---------- Mikrofon ----------
+function micOn() {
+  const t = state.stream && state.stream.getAudioTracks()[0];
+  return !!(t && t.enabled);
+}
+function toggleMic() {
+  const t = state.stream.getAudioTracks()[0];
+  t.enabled = !t.enabled;
+  $('muteBtn').textContent = t.enabled ? 'Mikrofon açık' : 'Mikrofon kapalı';
+  $('muteBtn').classList.toggle('off', !t.enabled);
+  broadcast({ t: 'mute', muted: !t.enabled });
+  renderPeople();
+}
+
+// ---------- Bağlantılar ----------
+function remote(id) {
+  if (!state.remotes[id]) state.remotes[id] = { id, name: '', conn: null, call: null, audio: null, muted: false };
+  return state.remotes[id];
+}
+function broadcast(obj) {
+  Object.values(state.remotes).forEach(r => { if (r.conn && r.conn.open) r.conn.send(obj); });
+}
+function removeRemote(id, announce) {
+  const r = state.remotes[id]; if (!r) return;
+  if (r.call) try { r.call.close(); } catch (e) {}
+  if (r.conn) try { r.conn.close(); } catch (e) {}
+  if (r.audio) { r.audio.srcObject = null; r.audio.remove(); }
+  delete state.meters[id];
+  delete state.remotes[id];
+  if (announce && r.name && !state.leaving) addSystem(r.name + ' ayrıldı');
+  renderPeople();
+}
+
+// İki kişi aynı anda birbirine bağlanmaya çalışırsa: kimliği büyük olanın başlattığı bağlantı kalır.
+function setupConn(conn, outgoing) {
+  const id = conn.peer, r = remote(id);
+  if (r.conn && r.conn !== conn) {
+    const keepNew = outgoing ? state.myId > id : id > state.myId;
+    if (!keepNew) { conn.close(); return; }
+    const old = r.conn; r.conn = null; try { old.close(); } catch (e) {}
+  }
+  r.conn = conn;
+  conn.on('open', () => {
+    conn.send({ t: 'hello', name: state.myName, muted: !micOn() });
+    // Sesli aramayı sadece kimliği büyük olan taraf başlatır (çift arama olmasın diye).
+    if (state.myId > id && !r.call) startCall(id);
+  });
+  conn.on('data', (d) => onData(id, d));
+  conn.on('close', () => { if (state.remotes[id] && state.remotes[id].conn === conn) removeRemote(id, true); });
+  conn.on('error', () => {});
+}
+function onData(id, d) {
+  const r = state.remotes[id]; if (!r || !d) return;
+  if (d.t === 'hello') {
+    const isNew = !r.name;
+    r.name = String(d.name || 'Misafir').slice(0, 20); r.muted = !!d.muted;
+    if (isNew) addSystem(r.name + ' katıldı');
+    renderPeople();
+  } else if (d.t === 'msg') {
+    addMessage(r.name || 'Misafir', String(d.text).slice(0, 500), false);
+  } else if (d.t === 'mute') {
+    r.muted = !!d.muted; renderPeople();
+  } else if (d.t === 'bye') {
+    removeRemote(id, true);
+  }
+}
+function startCall(id) {
+  const call = state.peer.call(id, state.stream);
+  if (call) setupCall(call);
+}
+function setupCall(call) {
+  const id = call.peer, r = remote(id);
+  if (r.call && r.call !== call) { try { r.call.close(); } catch (e) {} }
+  r.call = call;
+  call.on('stream', (s) => playRemote(id, s));
+  call.on('close', () => { if (state.remotes[id] && state.remotes[id].call === call) state.remotes[id].call = null; });
+  call.on('error', () => {});
+  // Bağlantı koparsa kişiyi listeden çıkar
+  setTimeout(() => {
+    const pc = call.peerConnection; if (!pc) return;
+    pc.addEventListener('iceconnectionstatechange', () => {
+      if (pc.iceConnectionState === 'failed') removeRemote(id, true);
+    });
+  }, 0);
+}
+function playRemote(id, stream) {
+  const r = state.remotes[id]; if (!r) return;
+  if (!r.audio) {
+    r.audio = document.createElement('audio');
+    r.audio.autoplay = true; r.audio.setAttribute('playsinline', '');
+    document.body.appendChild(r.audio);
+  }
+  r.audio.srcObject = stream;
+  r.audio.play().catch(() => { $('unlockAudio').style.display = 'block'; });
+  watchLevel(id, stream);
+}
+
+// ---------- Odaya katılma ----------
+function claimSlot(n) {
+  return new Promise((resolve, reject) => {
+    if (n > MAX_PEOPLE) return reject(new Error('full'));
+    const peer = new Peer(slotId(n), { debug: 0 });
+    let done = false;
+    peer.on('open', (id) => { done = true; resolve(peer); });
+    peer.on('error', (err) => {
+      if (done) return;
+      done = true; peer.destroy();
+      if (err.type === 'unavailable-id') claimSlot(n + 1).then(resolve, reject);
+      else reject(err);
+    });
+  });
+}
+
+async function join() {
+  const name = $('nameInput').value.trim();
+  const room = cleanRoom($('roomInput').value);
+  if (!name) return setStatus('Adını yaz.');
+  if (room.length < 3) return setStatus('Oda kodu en az 3 harf/rakam olmalı.');
+  setStatus(''); $('joinBtn').disabled = true; $('joinBtn').textContent = 'Bağlanıyor…';
+  try { localStorage.setItem('konusalim-name', name); } catch (e) {}
+
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false,
+    });
+  } catch (e) {
+    resetJoinButton();
+    return setStatus('Mikrofon izni gerekli. Ayarlardan mikrofona izin verip tekrar dene.');
+  }
+
+  state.myName = name; state.room = room; state.leaving = false;
+  // iPhone'da sesin çalabilmesi için ses sistemini dokunuşla başlat
+  try { state.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); state.audioCtx.resume(); } catch (e) {}
+
+  let peer;
+  try { peer = await claimSlot(1); }
+  catch (e) {
+    state.stream.getTracks().forEach(t => t.stop());
+    resetJoinButton();
+    return setStatus(e.message === 'full' ? 'Oda dolu (6 kişi).' : 'Bağlanılamadı. İnterneti kontrol edip tekrar dene.');
+  }
+
+  state.peer = peer; state.myId = peer.id;
+  watchLevel(state.myId, state.stream);
+
+  peer.on('connection', (conn) => setupConn(conn, false));
+  peer.on('call', (call) => { call.answer(state.stream); setupCall(call); });
+  peer.on('disconnected', () => { if (!state.leaving && !peer.destroyed) peer.reconnect(); });
+  peer.on('error', (err) => {
+    // Odada olmayan yerlere ulaşamamak normal: o boş bağlantıyı temizle
+    if (err.type === 'peer-unavailable') {
+      const m = String(err.message).match(new RegExp(APP_PREFIX + '[a-z0-9]+-\\d+'));
+      const r = m && state.remotes[m[0]];
+      if (r && !(r.conn && r.conn.open)) removeRemote(m[0], false);
+    }
+  });
+
+  // Odadaki diğer herkese bağlan
+  for (let n = 1; n <= MAX_PEOPLE; n++) {
+    const id = slotId(n);
+    if (id !== state.myId) setupConn(peer.connect(id, { reliable: true }), true);
+  }
+
+  history.replaceState(null, '', location.pathname + '?oda=' + encodeURIComponent(room));
+  $('messages').innerHTML = '';
+  addSystem('Odaya katıldın. Arkadaşların aynı oda kodunu yazarak gelebilir.');
+  showScreen('roomScreen'); renderPeople(); resetJoinButton();
+}
+
+function resetJoinButton() { $('joinBtn').disabled = false; $('joinBtn').textContent = 'Katıl'; }
+
+function leave() {
+  state.leaving = true;
+  broadcast({ t: 'bye' });
+  Object.keys(state.remotes).forEach(id => removeRemote(id, false));
+  if (state.peer) { try { state.peer.destroy(); } catch (e) {} state.peer = null; }
+  if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+  state.meters = {};
+  $('muteBtn').textContent = 'Mikrofon açık'; $('muteBtn').classList.remove('off');
+  $('roomLabel').textContent = '';
+  showScreen('joinScreen');
+}
+
+async function share() {
+  const link = inviteLink();
+  const text = 'Konuşalım odasına gel! Oda kodu: ' + state.room + (link ? '\n' + link : '');
+  try {
+    if (navigator.share) await navigator.share({ title: 'Konuşalım', text });
+    else { await navigator.clipboard.writeText(text); addSystem('Davet kopyalandı, istediğin yere yapıştır.'); }
+  } catch (e) { /* paylaşım iptal edildi */ }
+}
+
+// ---------- Olaylar ----------
+$('joinBtn').addEventListener('click', join);
+$('roomInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
+$('muteBtn').addEventListener('click', toggleMic);
+$('leaveBtn').addEventListener('click', leave);
+$('shareBtn').addEventListener('click', share);
+$('unlockAudio').addEventListener('click', () => {
+  Object.values(state.remotes).forEach(r => r.audio && r.audio.play().catch(() => {}));
+  if (state.audioCtx) state.audioCtx.resume();
+  $('unlockAudio').style.display = 'none';
+});
+$('chatBar').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = $('chatInput').value.trim(); if (!text) return;
+  broadcast({ t: 'msg', text }); addMessage(state.myName, text, true);
+  $('chatInput').value = '';
+});
+window.addEventListener('pagehide', () => { if (state.peer) leave(); });
+
+// Linkten gelen oda kodunu ve kayıtlı adı doldur
+(function init() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('oda')) $('roomInput').value = p.get('oda');
+  try { const n = localStorage.getItem('konusalim-name'); if (n) $('nameInput').value = n; } catch (e) {}
+  if (typeof Peer === 'undefined') setStatus('Bağlantı kütüphanesi yüklenemedi. İnterneti kontrol et.');
+})();
+</script>
+</body>
+</html>
